@@ -39,7 +39,7 @@ class NPointController(Device, metaclass=DeviceMeta):
     SensorAttribute = device_property(dtype=str, default_value="")
     Hysteresis = device_property(dtype=float, default_value=0)
     ActorMinControlInterval = device_property(dtype=float, default_value=0)
-    ActorConfig = device_property(dtype=string, default_value="")
+    ActorConfig = device_property(dtype=str, default_value="")
     regulateInterval = device_property(dtype=float, default_value=1)
     sensorValueTarget = device_property(dtype=float, default_value=0)
     deviceActor = 0
