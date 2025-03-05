@@ -97,15 +97,15 @@ class NPointController(Device, metaclass=DeviceMeta):
         if((time.time() - self.__lastChanged ) < self.ActorMinControlInterval):
             print("no regulation: min control interval not reached")
             return # not allowed to change again
-        
+
+        difference = self.getDifference()
         print("current actorValue: " + str(actorValue))
         print("current sensorValue: " + str(sensorValue))
         print("current target value: " + str(self.__sensorValueTarget))
         print("difference: " + str(difference))
-        
+
         # Calculate control signal by using simple compare of current value
         config = 0
-        difference = self.getDifference()
         for c in self._actorConfig:
             _config = self._actorConfig[c]
             if(_config[0] <= difference and difference <= _config[1]):
