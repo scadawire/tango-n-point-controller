@@ -106,8 +106,7 @@ class NPointController(Device, metaclass=DeviceMeta):
 
         # Calculate control signal by using simple compare of current value
         config = 0
-        for c in self._actorConfig:
-            _config = self._actorConfig[c]
+        for _config in self._actorConfig:
             if(_config[0] <= difference and difference <= _config[1]):
                 config = _config
 
