@@ -11,27 +11,35 @@ from threading import Thread
 class NPointController(Device, metaclass=DeviceMeta):
     pass
 
+    STATE_FILE = "pid_state.json"
+    TARGET_NO_VALUE = -999999999
+    __sensorValueTarget = -999999999
+    __enabled = False
+
     sensorValueCurrent = attribute(label="sensorValueCurrent", dtype=float,
         display_level=DispLevel.EXPERT,
         access=AttrWriteType.READ, polling_period=1000,
-        unit="_", format="8.4f")
+        unit="S", format="8.4f")
 
     actorValueCurrent = attribute(label="actorValueCurrent", dtype=float,
         display_level=DispLevel.EXPERT,
         access=AttrWriteType.READ, polling_period=1000,
-        unit="_", format="8.4f")
+        unit="A", format="8.4f")
 
-    sensorValueTargetCurrent = attribute(label="sensorValueTargetCurrent", dtype=float,
+    sensorValueTarget = attribute(label="sensorValueTarget", dtype=float,
         display_level=DispLevel.EXPERT,
-        access=AttrWriteType.READ, polling_period=1000,
-        unit="_", format="8.4f")
+        access=AttrWriteType.READ_WRITE, polling_period=1000,
+        unit="T", format="8.4f")
+
+    enabled = attribute(label="enabled", dtype=bool,
+        display_level=DispLevel.EXPERT,
+        access=AttrWriteType.READ_WRITE, polling_period=1000,
+        unit="*")
 
     difference = attribute(label="difference", dtype=float,
         display_level=DispLevel.EXPERT,
         access=AttrWriteType.READ, polling_period=1000,
-        unit="_", format="8.4f")
-    
-    __sensorValueTarget = 0
+        unit="DELTA", format="8.4f")
 
     ActorDevice = device_property(dtype=str, default_value="")
     ActorAttribute = device_property(dtype=str, default_value="")
@@ -40,8 +48,9 @@ class NPointController(Device, metaclass=DeviceMeta):
     Hysteresis = device_property(dtype=float, default_value=0)
     ActorMinControlInterval = device_property(dtype=float, default_value=0)
     ActorConfig = device_property(dtype=str, default_value="")
+    sensorValueTargetInitial = device_property(dtype=float, default_value=-999999999)
+    enabledInitial = device_property(dtype=bool, default_value=False)
     regulateInterval = device_property(dtype=float, default_value=1)
-    sensorValueTarget = device_property(dtype=float, default_value=0)
     deviceActor = 0
     deviceSensor = 0
     _actorConfig = 0
@@ -59,8 +68,17 @@ class NPointController(Device, metaclass=DeviceMeta):
         difference = self.getDifference()
         return difference, time.time(), AttrQuality.ATTR_VALID
 
-    def read_sensorValueTargetCurrent(self):
+    def read_sensorValueTarget(self):
         return self.__sensorValueTarget, time.time(), AttrQuality.ATTR_VALID
+
+    def write_sensorValueTarget(self, attr):
+        self.__sensorValueTarget = attr
+
+    def read_enabled(self):
+        return self.__enabled, time.time(), AttrQuality.ATTR_VALID
+
+    def write_enabled(self, attr):
+        self.__enabled = attr
 
     @command()
     def regulateLoop(self):
@@ -95,12 +113,18 @@ class NPointController(Device, metaclass=DeviceMeta):
         return difference
         
     def regulate(self):
+        if(self.__sensorValueTarget == self.TARGET_NO_VALUE):
+            print("no sensorValueTarget given")
+            return # not allowed to change again
+        if(self.__enabled == False):
+            print("Currently not enabled")
+            return # not allowed to change again
+
         actorValue = self.getActorValueFloat()
         sensorValue = self.getSensorValueFloat()
         if((time.time() - self.__lastChanged ) < self.ActorMinControlInterval):
             print("no regulation: min control interval not reached")
             return # not allowed to change again
-
         difference = self.getDifference()
         print("current actorValue: " + str(actorValue))
         print("current sensorValue: " + str(sensorValue))
@@ -131,13 +155,14 @@ class NPointController(Device, metaclass=DeviceMeta):
             if(actorAttribute.type == CmdArgType.DevString):
                 newActorValue = str(newActorValue)
             self.deviceActor.write_attribute(self.ActorAttribute, newActorValue)
+        self.save_state()
 
     def init_device(self):
         self.set_state(DevState.INIT)
         self.get_device_properties(self.get_device_class())
         self.deviceActor = DeviceProxy(self.ActorDevice)
         self.deviceSensor = DeviceProxy(self.SensorDevice)
-        self.__sensorValueTarget = self.sensorValueTarget
+        self.load_state()
         if self.ActorConfig != "":
             try:
                 self._actorConfig = json.loads(self.ActorConfig)
@@ -145,6 +170,25 @@ class NPointController(Device, metaclass=DeviceMeta):
                 self.info_stream("Init dynamic attribute: " + str(self.ActorConfig))
         Thread(target=self.regulateLoop).start()
         self.set_state(DevState.ON)
+
+    def save_state(self):
+        state = {
+            "sensorValueTarget": self.__sensorValueTarget,
+            "enabled": self.__enabled,
+        }
+        with open(self.STATE_FILE, "w") as f:
+            json.dump(state, f)
+
+    def load_state(self):
+        if not os.path.exists(self.STATE_FILE):
+            return
+        try:
+            with open(self.STATE_FILE) as f:
+                state = json.load(f)
+                self.__sensorValueTarget = state.get("sensorValueTarget", self.sensorValueTargetInitial)
+                self.__enabled = state.get("enabled", self.enabledInitial)
+        except (OSError, JSONDecodeError):
+            pass
 
 if __name__ == "__main__":
     deviceServerName = os.getenv("DEVICE_SERVER_NAME")
